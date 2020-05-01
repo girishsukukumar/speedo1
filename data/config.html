@@ -1,0 +1,273 @@
+<HTML>
+
+<head>
+
+<style>
+
+body, html {
+
+  height: 100%;
+
+  font-family: Arial, Helvetica, sans-serif;
+
+  background-color: #000000;
+
+  color: #ff3300
+
+}
+
+
+
+table, th, td {
+
+  border: 5px "#ff3300";
+
+  border-collapse: collapse;
+
+}
+
+th, td {
+
+  padding: 15px;
+
+  text-align: left;
+
+}
+
+table#t01 {
+
+  width: 100%;    
+
+  background-color: powderblue;
+
+}
+
+
+
+</style>
+
+</head>
+
+<body>
+
+<H1> <U>Device Configuration Page </U></H1>
+
+
+
+<HR>
+
+<HR>
+
+<form  action="/WheelDiameter" method="POST">
+
+            <TABLE  border="5">
+
+            <TR> 
+
+			   <TD> <B> Wheel Diameter in cm </B>     <input  type="text"  name="wheeldiam" maxlength="5" required ></TD>
+
+			   <TD>  </TD>
+
+			 </TR> </TABLE>  
+
+			 <input  type="submit" value="Submit">
+
+			 </form>
+
+			 
+
+<HR>
+
+
+
+<P>
+
+Enter the  details of your WiFi Network.  However 
+
+You can add up to two wifi networks as backups. In case the Primary Wifi
+
+is not available the device will try to connect to one of the backup network.
+
+</P>
+
+<form  action="/UpdateSSID1" method="POST"> 
+
+            <TABLE border="5">
+
+            <TR> 
+
+			   <TD> <B>Primary Wifi</B>      <input  type="text"  name="ssid1" maxlength="20" required ></TD>
+
+			   <TD> <B>Password</B> <input  type="password" name="password1" maxlength="20" required ></TD> 
+
+			   <TD> <input  type="submit" value="Submit"> </TD>
+
+			 </TR> </TABLE>  </form>
+
+
+
+<form  action="/UpdateSSID2" method="POST">
+
+            <TABLE border="5">
+
+            <TR> 
+
+			   <TD> <B>Backup Wifi 1</B>     <input  type="text"  name="ssid2" maxlength="20" required ></TD>
+
+			   <TD> <B>Password</B> <input  type="password" name="password2" maxlength="20" required ></TD>
+
+			   <TD> <input  type="submit" value="Submit"> </TD>
+
+			 </TR>
+
+			</TABLE></form>
+
+
+
+<form  action="/UpdateSSID3" method="POST">
+
+            <TABLE border="5">
+
+            <TR> 
+
+			   <TD> <B>Backup Wifi 2</B>      <input  type="text"  name="ssid3" maxlength="20" required ></TD>
+
+			   <TD> <b>Password</B> <input  type="password" name="password3" maxlength="20" required ></TD>
+
+			   <TD> <input  type="submit" value="Submit"> </TD>
+
+			 </TR>
+
+			</TABLE> </form>
+
+
+
+<HR>
+
+<H2> <U> Recording Options </U> </H2>
+
+
+
+<form action="/recordoptions" method="POST">
+
+<TABLE border="5">
+
+  <TR> 
+
+
+
+  <TD>Record basic data (Speed and RPM) : </TD><TD>
+
+  <input type="radio" id="yes" name="record_basic_data" value="yes" checked> <label for="yes">Yes</label>
+
+  <input type="radio" id="no" name="record_basic_data" value="no"> <label for="no">No</label>
+
+  </TD></TR>
+
+  
+
+  <TR> 
+
+
+
+  <TD>Record Route  (Outdoor use only) :</TD><TD>
+
+  <input type="radio" id="yes" name="record_gps_data" value="yes"> <label for="yes">Yes</label>
+
+  <input type="radio" id="no" name="record_gps_data" value="no" checked> <label for="no">No</label>
+
+  </TD></TR>
+
+  
+
+  <TR> 
+
+
+
+  <TD>Record Heart Beat :</TD><TD>
+
+  <input type="radio" id="yes" name="record_heart_beat" value="yes" > <label for="yes">Yes</label>
+
+  <input type="radio" id="no" name="record_heart_beat" value="no" checked> <label for="no">No</label>
+
+  </TD></TR>
+
+  
+
+   <TR> 
+
+
+
+   <TD>Record Body Temperature :</TD><TD>
+
+  <input type="radio" id="yes" name="record_body_temp" value="yes"> <label for="yes">Yes</label>
+
+  <input type="radio" id="no" name="record_body_temp" value="no" checked> <label for="no">No</label>
+
+  </TD></TR>
+
+  
+
+   <TR> 
+
+  <TD>Record Room Temprature and Humidity:</TD><TD>
+
+  <input type="radio" id="yes" name="record_environ_data" value="yes"> <label for="yes">Yes</label>
+
+  <input type="radio" id="no" name="record_environ_data" value="no" checked> <label for="no">No</label>
+
+    </TD></TR>
+
+	
+
+   <TR> 
+
+
+
+   <TD>Record Bike Orientation:</TD><TD>
+
+  <input type="radio" id="yes" name="record_accelormeter" value="yes"> <label for="yes">Yes</label>
+
+  <input type="radio" id="no" name="record_accelormeter" value="no" checked> <label for="no">No</label>
+
+    </TD></TR>
+
+	
+
+    <TR> 
+
+
+
+   <TD>Live Location Tracking (Out Door only):</TD><TD>
+
+  <input type="radio" id="yes" name="transmit_location" value="yes"> <label for="yes">Yes</label>
+
+  <input type="radio" id="no" name="transmit_location" value="no" checked> <label for="no">No</label>
+
+  </TD></TR>
+
+  
+
+   <TR> 
+
+
+
+   <TD>Real time Visulization :</TD><TD>
+
+  <input type="radio" id="yes" name="save_to_grafana" value="yes" checked> <label for="yes">Yes</label>
+
+  <input type="radio" id="no" name="save_to_grafana" value="no"> <label for="no">No</label>
+
+   </TD> <TD> <input type="submit" value="Submit"> </TD></TR>
+
+</TABLE>
+
+
+
+</form>
+
+
+
+ </body>
+
+ </HTML>
