@@ -1,0 +1,11 @@
+{
+ "Cadence"  : 300,
+ "Distance" : 3000,
+ "TotalDistance" : 5000,
+ "Status": "Moving" ,
+ "Duration": 10000,
+ "Satellites" : 24, ,
+ "GPSTimeSet": false,
+ "AverageSpeed": 100.2,
+ "RestDuration"  1000.1 ,
+}
