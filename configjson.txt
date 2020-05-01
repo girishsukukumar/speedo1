@@ -1,0 +1,11 @@
+{
+  "ssid1": "xxxxxxxxxxxxxxxxxxxx",
+  "password1": "xxxxxxxxxxxxxxxxxxxx",
+  "ssid2": "xxxxxxxxxxxxxxxxxxxx",
+  "password2": "xxxxxxxxxxxxxxxxxxxx",
+  "ssid3": "xxxxxxxxxxxxxxxxxxxx",
+  "password3": "xxxxxxxxxxxxxxx",
+
+  "wheelDiameter": 85.99,
+   "devicename" : "xxxxxxxxxxxxxx"
+}
