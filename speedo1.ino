@@ -66,6 +66,12 @@ int32_t       spo2; //SPO2 value
 int8_t        validSPO2; //indicator to show if the SPO2 calculation is valid
 int8_t        validHeartRate; //indicator to show if the heart rate calculation is valid
 int8_t        idx =0;
+int PowerTable[60] = {0,0,0 ,1,3,7, 10,15,21,25,30,35,40,45,50,
+                      55,65,70,75,80,90,100,105,115,125,135,145,
+                      155,165,180,190,210,220,240,250,265,280,300,
+                      320,330,345,360,380,410,430,450,480,500,
+                      530,550,575,610,640,675,72,750,790,825,
+                      860,900};
 
 
 typedef struct configData 
@@ -81,123 +87,31 @@ typedef struct configData
   
 };
 
-struct configData ConfigData ;
-WiFiMulti         wifiMulti;          //  Create  an  instance  of  the ESP32WiFiMulti 
-float             gRPM = 0.0 ;
-float             gSpeed = 0.0 ;
-float             gDistanceKM ;
-float             gTripDistance = 0.0 ;
-float             gLastRPMComputedTime = 0 ;
-float             gLastSpeedComputedTime = 0 ; 
-int               gHeartRate = 0 ;
-float             bodyTempInCelius=0.0 ;
-float             gRoomTemp ;
-float             gRoomHumidity ;
-float             gTotalDistance ;
-int               gtripDuration ;
+struct      configData ConfigData ;
+WiFiMulti   wifiMulti;          //  Create  an  instance  of  the ESP32WiFiMulti 
+float       gRPM                   = 0.0 ;
+float       gSpeed                 = 0.0 ;
+float       gDistanceKM            = 0.0 ;
+float       gTripDistance          = 0.0 ;
+float       gLastRPMComputedTime   = 0.0 ;
+float       gLastSpeedComputedTime = 0.0 ; 
+float       gBodyTempInCelius      = 0.0 ;
+float       gRoomTemp              = 0.0 ;
+float       gRoomHumidity          = 0.0 ;
+float       gTotalDistance         = 0.0 ;
+int         gtripDuration          = 0   ;
+int         gPulseRate             = 0   ;
+int         gPower                 = 0   ;
 
-/*
- * Login page
- */
-const char* loginIndex = 
- "<form name='loginForm'>"
-    "<table width='20%' bgcolor='A09F9F' align='center'>"
-        "<tr>"
-            "<td colspan=2>"
-
-                "<center><font size=4><b>ESP32 Login Page</b></font></center>"
-                "<br>"
-            "</td>"
-            "<br>"
-            "<br>"
-        "</tr>"
-        "<td>Username:</td>"
-        "<td><input type='text' size=25 name='userid'><br></td>"
-        "</tr>"
-        "<br>"
-        "<br>"
-        "<tr>"
-            "<td>Password:</td>"
-            "<td><input type='Password' size=25 name='pwd'><br></td>"
-            "<br>"
-            "<br>"
-        "</tr>"
-        "<tr>"
-            "<td><input type='submit' onclick='check(this.form)' value='Login'></td>"
-        "</tr>"
-    "</table>"
-"</form>"
-"<script>"
-    "function check(form)"
-    "{"
-    "if(form.userid.value=='admin' && form.pwd.value=='admin')"
-    "{"
-    "window.open('/serverIndex')"
-    "}"
-    "else"
-    "{"
-    " alert('Error Password or Username')/*displays error message*/"
-    "}"
-    "}"
-"</script>";
  
-/*
- * Server Index Page
- */
- 
-const char* serverIndex = "<HTML>" 
-"<H1> Cyclo Computer Config Page </H1>"
-"<TABLE>"
-"<TR>"
-"<TD> <form  action=\"/showRecord\" method=\"POST\"> <button type=\"submit\">Show files</button></form></TD>"
-"</TR>"
-"</TABLE>"
-"<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js'></script>"
-"<form method='POST' action='#' enctype='multipart/form-data' id='upload_form'>"
-   "<input type='file' name='update'>"
-        "<input type='submit' value='Update'>"
-    "</form>"
- "<div id='prg'>progress: 0%</div>"
- "<script>"
-  "$('form').submit(function(e){"
-  "e.preventDefault();"
-  "var form = $('#upload_form')[0];"
-  "var data = new FormData(form);"
-  " $.ajax({"
-  "url: '/update',"
-  "type: 'POST',"
-  "data: data,"
-  "contentType: false,"
-  "processData:false,"
-  "xhr: function() {"
-  "var xhr = new window.XMLHttpRequest();"
-  "xhr.upload.addEventListener('progress', function(evt) {"
-  "if (evt.lengthComputable) {"
-  "var per = evt.loaded / evt.total;"
-  "$('#prg').html('progress: ' + Math.round(per*100) + '%');"
-  "}"
-  "}, false);"
-  "return xhr;"
-  "},"
-  "success:function(d, s) {"
-  "console.log('success!')" 
- "},"
- "error: function (a, b, c) {"
- "}"
- "});"
- "});"
- "</script>"
- "</HTML>" ;
-
 const int      PULSE_INPUT = 34  ;
 const byte     CADENCE_PIN = 18  ;
 const byte     SPEED_PIN   = 19  ;
 const int      THRESHOLD   = 550 ;   // Adjust this number to avoid noise when idle
 
-volatile byte  prevCadenceTicks = 0;
-
-volatile byte  cadenceTicks = 0;
-volatile byte  speedTicks   = 0 ;
+volatile byte  prevCadenceTicks = 0 ; // Only for debugging
+volatile byte  cadenceTicks     = 0 ;
+volatile byte  speedTicks       = 0 ;
 TaskHandle_t   ComputeValuesTask;
 TaskHandle_t   DisplayValuesTask ;
 TaskHandle_t   MeasureHeartRateTask ;
@@ -362,8 +276,6 @@ void ListRecords()
 }
 void DisplayserverIndex()
 {
-//    webServer.sendHeader("Connection", "close");
-//    webServer.send(200, "text/html", serverIndex);
      File  file ;
      size_t  sent;
  
@@ -460,21 +372,39 @@ void DisplayDashboard()
      }
 
 }
+void DisplayGaugeDisplay()
+{
+     File  file ;
+     size_t  sent;
+ 
+     if (SPIFFS.exists("/gauge.html"))  
+     { 
+        file =SPIFFS.open("/gauge.html",  "r");
+        sent =webServer.streamFile(file, "text/html");  
+        file.close();
+     }
+     else
+     {
+         webServer.sendHeader("Connection", "close");
+         webServer.send(200, "text/html", "<HTML> <H1> File gauge.html not found </H1> </HTML>");
+     }
+
+}
 void PostDetails()
 {
-  int hours ;
-  int seconds ;
-  int minutes ;
-  char durationStr[15]; 
-  const size_t capacity = JSON_OBJECT_SIZE(10);
+  int   hours ;
+  int   seconds ;
+  int   minutes ;
+  char  durationStr[15]; 
+  const size_t capacity = JSON_OBJECT_SIZE(15);
+  DynamicJsonDocument doc(capacity);
 
   minutes = gtripDuration / 60;
   seconds = gtripDuration % 60;
-  hours = minutes / 60;
+  hours   = minutes / 60;
   minutes = minutes % 60;
   sprintf(durationStr,"%d:%d:%d",hours, minutes,seconds);
   
-  DynamicJsonDocument doc(capacity);
 
   char jsonString[250];
 
@@ -482,6 +412,7 @@ void PostDetails()
   doc["Cadence"]       = gRPM;
   doc["Distance"]      = round(gDistanceKM);
   doc["TotalDistance"] = round(gTotalDistance);
+  doc["Pulse"]         = round(gPulseRate);
   
   if (gSpeed > 0.0)
   {
@@ -492,11 +423,14 @@ void PostDetails()
     doc["Status"] = "Stopped";
   }
       
-  doc["Duration"]     = durationStr;
-  doc["Satellites"]   = 24;
-  doc["GPSTimeSet"]   = false;
-  doc["AverageSpeed"] = 0.0;
-  doc["RestDuration"] = 0.0;
+  doc["Duration"]        = durationStr;
+  doc["RoomTemperature"] = gRoomTemp ;
+  doc["RoomHumidity"]    = round(gRoomHumidity) ;
+  doc["AverageSpeed"]    = 0.0;
+  doc["RestDuration"]    = 0.0;
+  doc["Satellites"]      = 12 ;
+  doc["GPSTimeSet"]      = false;
+ 
   serializeJson(doc, jsonString);
   webServer.sendHeader("Connection", "close");
   webServer.send(200, "json", jsonString);
@@ -516,17 +450,18 @@ void setupWebHandler()
 {
    /*return index page which is stored in serverIndex */
 
-  webServer.on("/",             HTTP_GET,   DisplayLoginIndex);
-  webServer.on("/serverIndex",  HTTP_GET,   DisplayserverIndex);
-  webServer.on("/dashboard",    HTTP_POST,   DisplayDashboard);
-  webServer.on("/speed",        HTTP_POST,  PostDetails);
-  webServer.on("/ConfigPage",   HTTP_POST,  ChangeDetails);
-  webServer.on("/Fileupload",   HTTP_POST,  FileUpload);
-  webServer.on("/rebootDevice", HTTP_POST,  RebootDevice);
-  webServer.on("/updateConfigJson", HTTP_POST, UpdateConfigJson);
+  webServer.on("/",                 HTTP_GET,   DisplayLoginIndex);
+  webServer.on("/serverIndex",      HTTP_GET,   DisplayserverIndex);
+  webServer.on("/dashboard",        HTTP_POST,  DisplayDashboard);
+  webServer.on("/speed",            HTTP_POST,  PostDetails);
+  webServer.on("/ConfigPage",       HTTP_POST,  ChangeDetails);
+  webServer.on("/Fileupload",       HTTP_POST,  FileUpload);
+  webServer.on("/rebootDevice",     HTTP_POST,  RebootDevice);
+  webServer.on("/updateConfigJson", HTTP_POST,  UpdateConfigJson);
   webServer.on("/resettrip",        HTTP_POST,  ResetTrip);
-  webServer.on("/ListRecords",      HTTP_GET,  ListRecords);
+  webServer.on("/ListRecords",      HTTP_GET,   ListRecords);
   webServer.on("/DeleteRecords",    HTTP_POST,  DeleteRecords);
+  webServer.on("/gaugeDisplay",     HTTP_POST,  DisplayGaugeDisplay);
 
 
 
@@ -661,7 +596,6 @@ void DisplayRoomHumidity()
     display.setTextSize(1);
     display.printf("H:");
     display.setTextSize(2);
-    display.printf("%0.1f\n",gRoomHumidity);
 }
 void DisplayDistance()
 {
@@ -674,7 +608,7 @@ void DisplayHeartBeat()
     display.setTextSize(1);
     display.printf("HB:");
     display.setTextSize(2);
-    display.printf("%d\n",gHeartRate);
+    display.printf("%d\n",gPulseRate);
 }
 void DisplayBodyTemp()
 {
@@ -682,7 +616,7 @@ void DisplayBodyTemp()
     display.setTextSize(1);
     display.printf("BT:");    
     display.setTextSize(2);
-    display.printf("%0.1fC\n",bodyTempInCelius);
+    display.printf("%0.1fC\n",gBodyTempInCelius);
     delay(2000);
 }
 void ClearDisplay()
@@ -699,7 +633,6 @@ void DisplayValues( void * pvParameters )
   String  currentTime ;
   int     len ; 
   char    deviceTime[20] ;
-  float   Power ;
 
 
   flag = true ;
@@ -710,7 +643,6 @@ void DisplayValues( void * pvParameters )
     currentTime = timeClient.getFormattedTime(); 
     len = currentTime.length();
     currentTime.toCharArray(deviceTime,len+1);
-    Power = (5.244820 * gSpeed) + (0.01968 * gSpeed * gSpeed * gSpeed) ;
 #if 0    
     ClearDisplay();
     DisplayRPM();
@@ -739,8 +671,11 @@ void DisplayValues( void * pvParameters )
        
        recordFile =  SPIFFS.open(recordFileName, FILE_APPEND);
 
-       recordFile.printf("%s, %0.1f,%0.1f,%0.1f,%0.1f,%0.1f,%0.1f\n",
-                       deviceTime,gRPM,gSpeed,gDistanceKM,Power,gRoomTemp,gRoomHumidity);
+       recordFile.printf("%s, %0.1f,%0.1f,%0.1f,%d,%0.1f,%0.1f,%d,%0.f\n",
+                       deviceTime,gRPM,gSpeed,gDistanceKM,
+                       gPower,gRoomTemp,gRoomHumidity,
+                       gPulseRate,gBodyTempInCelius);
+                       
        recordFile.close();
     }    
     delay(3000);
@@ -755,7 +690,7 @@ void MeasureHeartRate( void * pvParameters )
     long irValue = maxSensor.getIR();
     idx++ ;
     
-    bodyTempInCelius = maxSensor.readTemperature(); 
+    gBodyTempInCelius = maxSensor.readTemperature(); 
 
     if (checkForBeat(irValue) == true)
     {
@@ -788,7 +723,7 @@ void MeasureHeartRate( void * pvParameters )
       {
          DEBUG_PRINTF("Avg BPM:%d\n",beatAvg);
          Debug.printf("Avg BPM:%d\n",beatAvg);
-         gHeartRate = beatAvg ;
+         gPulseRate = beatAvg ;
          idx = 0 ;
       }
       
@@ -820,7 +755,7 @@ void MeasureTempHumidity(void *params)
           DEBUG_PRINTF("Error in reading temp \n");
        
        dht.humidity().getEvent(&event);
-       DEBUG_PRINTF("Temp = %f \n",event.relative_humidity);
+       DEBUG_PRINTF("Humudity = %f \n",event.relative_humidity);
 
        if (isnan(event.relative_humidity) == false) 
        {
@@ -831,10 +766,24 @@ void MeasureTempHumidity(void *params)
        delay(60000);
     }
 }
+int ComputePower(float s)
+{
+  /* 
+   *  PowerTable is specific to Jet Black Pro fluid trainer
+   *  This can be extract from the specification of any trainer
+   *  Provided the manufacture publishes it
+  */
+  
+  int idx, power ;
+  idx = round(s);
+  power = PowerTable[idx] ;
+  return power ;
+}
 void ComputeValues( void * pvParameters )
 {
   int currentTime  ;
   int diff ;
+  int idx ;
   DEBUG_PRINTF("Core ID where Computer Values running is : %d",xPortGetCoreID());
  
 
@@ -870,9 +819,10 @@ void ComputeValues( void * pvParameters )
        gSpeed  = distanceTravelled/timeFrame ;  // Speed  in meters per second      
        gSpeed  = gSpeed * 3.6 ; // convert m/sec into Km/hr 
        
+       gPower  = ComputePower(gSpeed);
        gTripDistance  = gTripDistance + distanceTravelled ; // In Meters
        gDistanceKM    = gTripDistance /1000 ; //Convert into KM
-       gTotalDistance = gTotalDistance + gDistanceKM ;
+       gTotalDistance = gTotalDistance + (distanceTravelled/1000) ;
        gLastSpeedComputedTime = currentTime ;
        if (gSpeed > 0.0)
           gtripDuration = gtripDuration + (diff/1000) ;
@@ -942,6 +892,8 @@ void CreateNewRecordFile()
    char    deviceTime[20];
    char    *monthArray[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul","Aug", "Sep", "Oct", "Nov", "Dec"};
    int     monthArrayIdx ;
+   File    recordFile ;
+
 
    timeClient.update(); // Keep the device time up to date
 
@@ -971,6 +923,12 @@ void CreateNewRecordFile()
   len = currentTime.length();
   currentTime.toCharArray(deviceTime,len+1);
   sprintf(recordFileName,"/%s%s%s.csv",deviceDate,monthArray[monthArrayIdx-1],deviceTime);
+  recordFile =  SPIFFS.open(recordFileName, FILE_WRITE);
+
+  recordFile.printf("Time, RPM, Speed, Distance, Power,RoomTemperature, Humudity, Pulse,BodyTemprature\n");
+
+  recordFile.close();
+
   DEBUG_PRINTF("File name = %s \n", recordFileName);
   
 
@@ -1049,7 +1007,7 @@ void setup()
                     1,           /* priority of the task */
                     &DisplayValuesTask,      /* Task handle to keep track of created task */
                     CORE_ONE);          /* pin task to core 1 */      
-#if 0
+
   xTaskCreatePinnedToCore(
                     MeasureTempHumidity,   /* Task function. */
                     "Task3",     /* name of task. */
@@ -1058,8 +1016,7 @@ void setup()
                     1,           /* priority of the task */
                     &MeasureTempHumidityTask,      /* Task handle to keep track of created task */
                     CORE_ZERO);          /* pin task to core 0 */      
-#endif
-  pinMode(22, INPUT_PULLUP);
+
 
   if (max30102Setup() == true)
   {
