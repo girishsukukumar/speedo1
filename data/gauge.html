@@ -1,0 +1,231 @@
+<html>
+
+<div id="demo">
+  <CENTER><h1>Workout Dashboard </h1>
+  <h4>I-Squared OT Labs</h4> </CENTER>
+</div>
+
+
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body, html {
+  height: 100%;
+  font-family: Arial, Helvetica, sans-serif;
+  background-color: #000000;
+  color: #ff3300
+}
+table, th, td {
+  border: 5px "#ff3300";
+  border-collapse: collapse;
+}
+th, td {
+  padding: 15px;
+  text-align: left;
+}
+
+table#t01 {
+  width: 100%;
+  background-color: powderblue;
+}
+</style>
+
+   <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+   <script type="text/javascript">
+      google.charts.load('current', {'packages':['gauge']});
+      google.charts.setOnLoadCallback(drawChart);
+
+      function drawChart() {
+
+        var data = google.visualization.arrayToDataTable([
+          ['Label', 'Value'],
+          ['Speed', 80],
+          ['RPM', 120],
+          ['Room Temperature', 68],
+          ['Humidity', 100]
+        ]);
+
+        var options = {
+          width: 500, height: 220,
+          redFrom: 90, redTo: 100,
+          yellowFrom:75, yellowTo: 90,
+          minorTicks: 5 
+        };
+        var optionsRPM = {
+          width: 500, height: 220,
+          min: 0, max: 200,
+          redFrom: 90, redTo: 200,
+          yellowFrom:75, yellowTo: 90,
+          minorTicks: 5  
+        };
+
+        var chart = new google.visualization.Gauge(document.getElementById('chart_div'));
+
+        chart.draw(data, options);
+
+        setInterval(function() {
+          data.setValue(0, 1, speed);
+          chart.draw(data, options);
+        }, 1000);
+        setInterval(function() {
+          data.setValue(1, 1, cadence);
+          chart.draw(data, optionsRPM);
+        }, 1000);
+        setInterval(function() {
+          data.setValue(2, 1, roomTemperature);
+          chart.draw(data, options);
+        }, 1000);
+        setInterval(function() {
+          data.setValue(3, 1, roomHumidity);
+          chart.draw(data, options);
+        }, 1000);
+      }
+function loop()
+{
+   var xhttp = new XMLHttpRequest();
+   today = new Date() ;
+   time = today.getHours() + ":" + today.getMinutes() + ":" + today.getSeconds();
+   currentTime    = time ;
+   xhttp.onreadystatechange = function() 
+   {
+      if (this.readyState == 4 && this.status == 200)
+      {
+
+         var jsonObject = JSON.parse(this.responseText );
+         speed          = jsonObject.Speed;
+         cadence        = jsonObject.Cadence;
+         distance       = jsonObject.Distance;
+         totaldistance  = jsonObject.TotalDistance;
+         bikeStatus     = jsonObject.Status;
+         duration       = jsonObject.Duration;
+         gpsSatellites     = jsonObject.Satellites;
+         roomTemperature     = jsonObject.RoomTemperature;
+         roomHumidity        = jsonObject.RoomHumidity;
+         pulse        = jsonObject.Pulse;
+    
+      }
+
+   };
+
+   xhttp.open("POST", "speed", true);
+   xhttp.send();
+
+
+/*
+   var str = "Speed: "+ speed.toString();
+   str = str.fontsize("6"); // sets size of the text to 6
+   //str = str.fontcolor("#006400"); // sets color of the text to #006400
+   str = str.bold(); // makes text bold
+   document.getElementById('speed').innerHTML = str;
+   
+   var str = "RPM: "+ cadence.toString();
+   str = str.fontsize("4"); // sets size of the text to 6
+   //str = str.fontcolor("#006400"); // sets color of the text to #006400
+   str = str.bold(); // makes text bold
+   document.getElementById('cadence').innerHTML = str;
+*/
+
+   var str = "Distance: "+ distance.toString() + " Km" ;
+   str = str.fontsize("4"); // sets size of the text to 6
+   //str = str.fontcolor("#006400"); // sets color of the text to #006400
+   str = str.bold(); // makes text bold
+   document.getElementById('distance').innerHTML = str;
+
+   str = "Pulse: "+ pulse.toString() 
+   str = str.fontsize(4); // sets size of the text to 6
+   //str = str.fontcolor("#006400"); // sets color of the text to #006400
+   str = str.bold(); // makes text bold
+   document.getElementById('hb').innerHTML = str;
+
+   str = "Usage: "+ totaldistance.toString() + " Km";
+   str = str.fontsize(4); // sets size of the text to 6
+   //str = str.fontcolor("#006400"); // sets color of the text to #006400
+   str = str.bold(); // makes text bold
+   document.getElementById('totaldistance').innerHTML = str;
+ 
+ 
+   str = "Clock: "+ currentTime;
+   str = str.fontsize(4); // sets size of the text to 6
+   //str = str.fontcolor("#006400"); // sets color of the text to #006400
+   str = str.bold(); // makes text bold
+   document.getElementById('currenttime').innerHTML = str;
+ 
+
+
+   str = "Duration: "+ duration.toString();
+   str = str.fontsize(4); // sets size of the text to 6
+   //str = str.fontcolor("#006400"); // sets color of the text to #006400
+   str = str.bold(); // makes text bold
+   document.getElementById('rideduration').innerHTML = str;
+
+   str = "GPS Satellite: "+ gpsSatellites;
+   str = str.fontsize(4); // sets size of the text to 6
+   str = str.bold(); // makes text bold
+   document.getElementById('satellites').innerHTML = str;
+
+/*   
+   str = "Room Temperature: "+ roomTemperature.toString();
+   str = str.fontsize(4); // sets size of the text to 6
+   str = str.bold(); // makes text bold
+   document.getElementById('roomtemperature').innerHTML = str;
+
+
+   str = "Room Humidity: "+ roomHumidity.toString();
+   str = str.fontsize(4); // sets size of the text to 6
+   str = str.bold(); // makes text bold
+   document.getElementById('roomhumidity').innerHTML = str;
+*/
+
+   str = "Bike:"+ bikeStatus;
+   str = str.fontsize(4); // sets size of the text to 6
+   str = str.bold(); // makes text bold
+   document.getElementById('bikestatus').innerHTML = str;
+   mystartup();
+
+}
+function mystartup(){
+    setTimeout(function(){ loop(); }, 1000);
+
+}
+
+
+
+var kickstart     = new mystartup();
+var pulse         =  0;
+var speed         =  0;
+var cadence       =  0;
+var distance      =  0;
+var totaldistance =  0;
+var bikeStatus    = "Stopped"
+var duration      = "0:0:0";
+var fontSize      = 6;
+var gpsSatellites    = 0 ; 
+var roomTemperature    = 0 ;
+var roomHumidity    = 0 ;
+var today         = new Date();
+var time = today.getHours() + ":" + today.getMinutes() + ":" + today.getSeconds();
+var currentTime   = time;
+
+</script>
+  </head>
+  <body>
+    <div id="chart_div" style="width: 400px; height: 120px;"></div>
+    <table border="5">
+      <TR> 
+        <TI> <Td> <div id="rideduration"> </div> </td> </TI>
+        <TI> <Td> <div id="hb">           </div> </td></TI>
+        <TI> <Td> <div id="distance">     </div> </td></TI>
+     </TR>
+      <TR> 
+        <Td> <div id="currenttime"></div> </td>
+        <TI> <Td> <div id="bikestatus">           </div> </td></TI>
+        <TI> <Td> <div id="totaldistance"> </div> </td> </TI>
+     </TR>
+     <TR> 
+        <TI> <Td> <div id="satellites">     </div> </td></TI>
+     </TR>
+
+    </table>
+  </body>
+</html>
+
