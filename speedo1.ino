@@ -24,7 +24,6 @@
 #define DHTTYPE    DHT11     // DHT 11
 
 #include "MAX30105.h"
-
 #include "heartRate.h"
 #include "spo2_algorithm.h"
 #define   ENABLE_PRINTF 1 
@@ -35,7 +34,9 @@
     #define    DEBUG_PRINTF(f,...)
 #endif
 
-
+#define ONBOARD_LED 2
+#define SAMPLE_SIZE 10 
+#define SD_LIMIT 2.0 
 #define WEBSERVER_PORT 80
 #define JSON_CONFIG_FILE_NAME "/config.json" 
 #define JSON_PERSISTANT_FILE_NAME "/persistant.json"
@@ -54,18 +55,15 @@ WiFiUDP       ntpUDP;
 NTPClient     timeClient(ntpUDP);
 MAX30105      maxSensor;
 
-const byte    RATE_SIZE = 4; //Increase this for more averaging. 4 is good.
-byte          rates[RATE_SIZE]; //Array of heart rates
-byte          rateSpot = 0;
-long          lastBeat = 0; //Time at which the last beat occurred
-float         beatsPerMinute;
-int           beatAvg;
-uint32_t      irBuffer[100]; //infrared LED sensor data
-uint32_t      redBuffer[100];  //red LED sensor data
-int32_t       spo2; //SPO2 value
-int8_t        validSPO2; //indicator to show if the SPO2 calculation is valid
-int8_t        validHeartRate; //indicator to show if the heart rate calculation is valid
-int8_t        idx =0;
+const byte RATE_SIZE = 4; //Increase this for more averaging. 4 is good.
+byte       rates[RATE_SIZE]; //Array of heart rates
+byte       rateSpot = 0;
+long       lastBeat = 0; //Time at which the last beat occurred
+float      beatsPerMinute;
+int        beatAvg = 0 ;
+int        prevBeatAvg = 100 ;
+int        listOfTenSamples[SAMPLE_SIZE];
+int        idx =0 ;
 int PowerTable[60] = {0,0,0 ,1,3,7, 10,15,21,25,30,35,40,45,50,
                       55,65,70,75,80,90,100,105,115,125,135,145,
                       155,165,180,190,210,220,240,250,265,280,300,
@@ -425,6 +423,7 @@ void PostDetails()
       
   doc["Duration"]        = durationStr;
   doc["RoomTemperature"] = gRoomTemp ;
+  doc["BodyTemperature"] = gBodyTempInCelius ;
   doc["RoomHumidity"]    = round(gRoomHumidity) ;
   doc["AverageSpeed"]    = 0.0;
   doc["RestDuration"]    = 0.0;
@@ -685,54 +684,92 @@ void DisplayValues( void * pvParameters )
 
 void MeasureHeartRate( void * pvParameters )
 {
+  long irValue ;
+  float SumForSD ;
+  float avg ;
   while(1)
-  {  
-    long irValue = maxSensor.getIR();
-    idx++ ;
-    
-    gBodyTempInCelius = maxSensor.readTemperature(); 
-
+  {
+     irValue = maxSensor.getIR();
+     gBodyTempInCelius = maxSensor.readTemperature();
     if (checkForBeat(irValue) == true)
     {
-      // We sensed a beat!
-      long delta = millis() - lastBeat;
-      //DEBUG_PRINTF("Delta = %d \n", delta);
-      lastBeat = millis();
-
-      beatsPerMinute = 60 / (delta / 1000.0);
-
-      if (beatsPerMinute < 255 && beatsPerMinute > 20)
-      {
-        rates[rateSpot++] = (byte)beatsPerMinute; //Store this reading in the array
-        rateSpot %= RATE_SIZE; //Wrap variable
-
-        //Take average of readings
-        beatAvg = 0;
-        for (byte x = 0 ; x < RATE_SIZE ; x++)
+        digitalWrite(ONBOARD_LED,HIGH);
+        //We sensed a beat!
+        long delta = millis() - lastBeat;
+        lastBeat = millis();
+        beatsPerMinute = 60 / (delta / 1000.0);
+        if (beatsPerMinute < 255 && beatsPerMinute > 20)
         {
-          beatAvg += rates[x];
-        }
-        beatAvg /= RATE_SIZE;
-      }
+          rates[rateSpot++] = (byte)beatsPerMinute; //Store this reading in the array
+          rateSpot %= RATE_SIZE; //Wrap variable
+          //Take average of readings
+          beatAvg = 0;
+          for (byte x = 0 ; x < RATE_SIZE ; x++)
+               beatAvg += rates[x];
+          beatAvg /= RATE_SIZE;
+      
+       }
     }
 
-    if (irValue > 50000)
-    {
-      
-      if (idx == 100)
+//  Serial.print("IR=");
+//  Serial.print(irValue);
+//  Serial.print(", BPM=");
+//  Serial.print(beatsPerMinute);
+//  Serial.print(", Avg BPM=");
+      if (prevBeatAvg != beatAvg)
       {
-         DEBUG_PRINTF("Avg BPM:%d\n",beatAvg);
-         Debug.printf("Avg BPM:%d\n",beatAvg);
-         gPulseRate = beatAvg ;
-         idx = 0 ;
+         int i ;
+         int sum ;
+       
+         listOfTenSamples[idx] = beatAvg ;
+         idx++ ;
+         if (idx >(SAMPLE_SIZE -1))
+         { 
+           sum = 0 ;
+           for(i=0;i < SAMPLE_SIZE; i++)
+           {
+               sum = sum + listOfTenSamples[i] ;     
+           }
+           avg  = sum/SAMPLE_SIZE ;
+           idx = 0;
+           //Calculate Standard Deviation 
+           SumForSD = 0.0 ;
+           for(i=0;i < SAMPLE_SIZE; i++)
+           {
+              float diff ;
+              diff = listOfTenSamples[i] - avg ;
+              diff = diff * diff ;
+              SumForSD = SumForSD + diff ;   
+           }
+           SumForSD = SumForSD/SAMPLE_SIZE ;
+           SumForSD = sqrt(SumForSD) ;
+           if (SumForSD < SD_LIMIT)
+           {
+             Serial.printf("Avg = %f, SD = %f\n",avg, SumForSD);
+             gPulseRate = avg ;
+             for(i=0;i<SAMPLE_SIZE;i++)
+             {
+                Serial.printf("%d, ", listOfTenSamples[i]);
+                listOfTenSamples[i] = 0 ;
+             }
+             Serial.printf("\n");
+           }
+       }
+       prevBeatAvg = beatAvg;
+     }
+      vTaskDelay(10); 
+      digitalWrite(ONBOARD_LED,LOW);
+      if (irValue < 50000)
+      {
+       /* This indicate Finger is removed from sensor
+        Since Finger is removed all the values so far
+        Collected has to ignored 
+        */
+       for (idx = 0 ; idx < 10; idx++)
+           listOfTenSamples[idx] = 0;
+       idx = 0;    
+       beatAvg = -1;
       }
-      
-    }
-    else
-    {
-      DEBUG_PRINTF(" No finger?\n");
-      Debug.printf(" No finger?\n");
-    }
   }
 }
 
@@ -940,6 +977,7 @@ void setup()
   //SetupDisplay();
   Serial.begin(115200);
   DEBUG_PRINTF("Speedo");
+  pinMode(ONBOARD_LED,OUTPUT);
 
   pinMode(CADENCE_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(CADENCE_PIN), cadencePinHandler, FALLING);
