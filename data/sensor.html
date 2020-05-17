@@ -124,14 +124,16 @@ function loop()
       if (this.readyState == 4 && this.status == 200)
       {
 
-         var jsonObject = JSON.parse(this.responseText );
-         speed          = jsonObject.Speed;
-         cadence        = jsonObject.Cadence;
-         distance       = jsonObject.Distance;
-         totaldistance  = jsonObject.TotalDistance;
-         bikeStatus     = jsonObject.Status;
-         duration       = jsonObject.Duration;
-         satellites     = jsonObject.Satellites;
+         var jsonObject  = JSON.parse(this.responseText );
+         speed           = jsonObject.Speed;
+         cadence         = jsonObject.Cadence;
+         distance        = jsonObject.Distance;
+         totaldistance   = jsonObject.TotalDistance;
+         bikeStatus      = jsonObject.Status;
+         duration        = jsonObject.Duration;
+         satellites      = jsonObject.Satellites;
+         bodyTemperature = jsonObject.BodyTemperature ;
+         pulse           = jsonObject.Pulse;
       }
 
    };
@@ -154,19 +156,19 @@ function loop()
    document.getElementById('cadence').innerHTML = str;
 
 
-   var str = "Dist: "+ distance.toString();
+   var str = "Distance: "+ distance.toString();
    str = str.fontsize("6"); // sets size of the text to 6
    //str = str.fontcolor("#006400"); // sets color of the text to #006400
    str = str.bold(); // makes text bold
    document.getElementById('distance').innerHTML = str;
 
-   str = "Heartbeat: "+ count.toString() 
+   str = "Pulse: "+ pulse 
    str = str.fontsize(4); // sets size of the text to 6
    //str = str.fontcolor("#006400"); // sets color of the text to #006400
    str = str.bold(); // makes text bold
    document.getElementById('hb').innerHTML = str;
 
-   str = "TD: "+ totaldistance;
+   str = "Usage: "+ totaldistance;
    str = str.fontsize(fontSize); // sets size of the text to 6
    //str = str.fontcolor("#006400"); // sets color of the text to #006400
    str = str.bold(); // makes text bold
@@ -184,7 +186,7 @@ function loop()
    str = str.bold(); // makes text bold
    document.getElementById('rideduration').innerHTML = str;
 
-   str = "GPS Satellite: "+ satellites;
+   str = "GPS Fix: "+ satellites;
    str = str.fontsize(4); // sets size of the text to 6
    //str = str.fontcolor("#006400"); // sets color of the text to #006400
    str = str.bold(); // makes text bold
@@ -195,6 +197,14 @@ function loop()
    //str = str.fontcolor("#006400"); // sets color of the text to #006400
    str = str.bold(); // makes text bold
    document.getElementById('bikestatus').innerHTML = str;
+   
+   
+   str = "Body Temp:"+ bodyTemperature;
+   str = str.fontsize(4); // sets size of the text to 6
+   //str = str.fontcolor("#006400"); // sets color of the text to #006400
+   str = str.bold(); // makes text bold
+   document.getElementById('bodyTemperature').innerHTML = str;
+
    mystartup();
 
 }
@@ -206,11 +216,12 @@ function mystartup(){
 
 
 var kickstart     = new mystartup();
-var count         =  0;
+var pulse         =  0;
 var speed         =  0;
 var cadence       =  0;
 var distance      =  0;
 var totaldistance =  0;
+var bodyTemperature = 0 ;
 var bikeStatus    = "Stopped"
 var duration      = 0;
 var fontSize      = 6;
@@ -271,10 +282,11 @@ table#t01 {
 
 <TR>
    <TI> <Td> <div id="hb"></div> </td></TI>
-   <TI> <Td> <div id="satellites"></div> </td></TI>
+   <TI> <Td> <div id="bodyTemperature"></div> </td></TI> 
 </TR>
 <TR>
    <TI> <Td> <div id="bikestatus"></div> </td></TI>
+   <TI> <Td> <div id="satellites"></div> </td></TI>
 </TR>
 
 </Table>

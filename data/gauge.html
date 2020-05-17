@@ -102,6 +102,8 @@ function loop()
          roomTemperature     = jsonObject.RoomTemperature;
          roomHumidity        = jsonObject.RoomHumidity;
          pulse        = jsonObject.Pulse;
+         bodyTemperature = jsonObject.BodyTemperature ;
+
     
       }
 
@@ -158,7 +160,7 @@ function loop()
    str = str.bold(); // makes text bold
    document.getElementById('rideduration').innerHTML = str;
 
-   str = "GPS Satellite: "+ gpsSatellites;
+   str = "GPS Fix: "+ gpsSatellites;
    str = str.fontsize(4); // sets size of the text to 6
    str = str.bold(); // makes text bold
    document.getElementById('satellites').innerHTML = str;
@@ -180,6 +182,11 @@ function loop()
    str = str.fontsize(4); // sets size of the text to 6
    str = str.bold(); // makes text bold
    document.getElementById('bikestatus').innerHTML = str;
+   
+   str = "Body Temperature:"+ bodyTemperature;
+   str = str.fontsize(4); // sets size of the text to 6
+   str = str.bold(); // makes text bold
+   document.getElementById('bodyTemperature').innerHTML = str;
    mystartup();
 
 }
@@ -197,6 +204,7 @@ var cadence       =  0;
 var distance      =  0;
 var totaldistance =  0;
 var bikeStatus    = "Stopped"
+var bodyTemperature = 0 ;
 var duration      = "0:0:0";
 var fontSize      = 6;
 var gpsSatellites    = 0 ; 
@@ -216,13 +224,14 @@ var currentTime   = time;
         <TI> <Td> <div id="hb">           </div> </td></TI>
         <TI> <Td> <div id="distance">     </div> </td></TI>
      </TR>
-      <TR> 
+      <TR>
         <Td> <div id="currenttime"></div> </td>
-        <TI> <Td> <div id="bikestatus">           </div> </td></TI>
+        <TI> <Td> <div id="bodyTemperature">           </div> </td></TI>
         <TI> <Td> <div id="totaldistance"> </div> </td> </TI>
      </TR>
      <TR> 
         <TI> <Td> <div id="satellites">     </div> </td></TI>
+        <TI> <Td> <div id="bikestatus">           </div> </td></TI>
      </TR>
 
     </table>
