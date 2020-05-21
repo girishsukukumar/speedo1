@@ -1,4 +1,5 @@
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <WiFiClient.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
@@ -14,7 +15,8 @@
 #define USE_ARDUINO_INTERRUPTS true
 #include <NTPClient.h>
 #include "SPIFFS.h"
- 
+#include <PubSubClient.h>
+
 #include <ESP8266FtpServer.h>
 #include <Adafruit_Sensor.h>
 #include <DHT.h>
@@ -26,14 +28,23 @@
 #include "MAX30105.h"
 #include "heartRate.h"
 #include "spo2_algorithm.h"
-#define   ENABLE_PRINTF 1 
+//#define   DEBUG 1 
+#define  NETWORK_DEBUG 1
 
-#ifdef ENABLE_PRINTF 
-    #define    DEBUG_PRINTF(f,...)   Serial.printf(f,##__VA_ARGS__)
+#ifdef DEBUG
+#define DEBUG_PRINTLN(x)  Serial.println (x)
+#define DEBUG_PRINT(x)  Serial.print (x)
+#define DEBUG_PRINTF(f,...)   Serial.printf(f,##__VA_ARGS__)
 #else
-    #define    DEBUG_PRINTF(f,...)
+#define DEBUG_PRINT(x)
+#define DEBUG_PRINTLN(x)
+#define DEBUG_PRINTF(f,...)
 #endif
 
+#ifdef NETWORK_DEBUG
+    #define    DEBUG_PRINTF(f,...)  Debug.printf(f,##__VA_ARGS__)
+#endif
+    
 #define ONBOARD_LED 2
 #define SAMPLE_SIZE 10 
 #define SD_LIMIT 2.0 
@@ -45,8 +56,19 @@
 #define NAME_LEN 20
 #define FTP_USER_NAME "apollo11"
 #define FTP_PASSWORD  "eagle"
+#define MAX_LIMIT_OF_CONNETION_FAILURE 5
+
+
 #define CORE_ONE 1
 #define CORE_ZERO 0 
+
+#define MQTT_FINGER_PRINT_LENGTH    150
+#define JSON_STRING_LENGTH          350
+#define PASSWORD_NAME_LENGTH         20
+#define USERNAME_NAME_LENGTH         20
+#define MQTT_MAX_CONNECTION_ATTEMPTS 10
+#define GEN_NAME_LEN                 20
+#define HOST_NAME_LENGTH             40
 
 FtpServer     ftpSrv; 
 WebServer     webServer(WEBSERVER_PORT);
@@ -61,7 +83,7 @@ byte       rateSpot = 0;
 long       lastBeat = 0; //Time at which the last beat occurred
 float      beatsPerMinute;
 int        beatAvg = 0 ;
-int        prevBeatAvg = 100 ;
+int        prevBeatAvg = 0 ;
 int        listOfTenSamples[SAMPLE_SIZE];
 int        idx =0 ;
 int PowerTable[60] = {0,0,0 ,1,3,7, 10,15,21,25,30,35,40,45,50,
@@ -82,7 +104,15 @@ typedef struct configData
   char     password3[SSID_PASSWD_LEN] ;
   float    wheelCirumference ;
   char     wifiDeviceName[NAME_LEN] ;  
-  
+  char     userName[NAME_LEN];
+  bool     sendDataToinFlux ;
+  char     mqttServer[HOST_NAME_LENGTH] ;
+  int      mqttPort ;
+  char     mqttUser[USERNAME_NAME_LENGTH] ;
+  char     mqttPassword[PASSWORD_NAME_LENGTH] ;
+  uint8_t  mqttCertFingerprint[MQTT_FINGER_PRINT_LENGTH] ;
+  uint8_t  mqttJsonStatus ;
+  char     dataRequestTopic[HOST_NAME_LENGTH+USERNAME_NAME_LENGTH];
 };
 
 struct      configData ConfigData ;
@@ -100,7 +130,7 @@ float       gTotalDistance         = 0.0 ;
 int         gtripDuration          = 0   ;
 int         gPulseRate             = 0   ;
 int         gPower                 = 0   ;
-
+int         gMqttLastPublishedTime = 0   ;
  
 const int      PULSE_INPUT = 34  ;
 const byte     CADENCE_PIN = 18  ;
@@ -116,6 +146,10 @@ TaskHandle_t   MeasureHeartRateTask ;
 TaskHandle_t   MeasureTempHumidityTask ;
 
 char            recordFileName[NAME_LEN];
+
+WiFiClientSecure WifiSecureClientForMQTT;
+WiFiClient       WifiClientForMQTT  ;
+PubSubClient     MQTTPubSubClient(WifiClientForMQTT);
 
 // Software SPI (slower updates, more flexible pin options):
 // GPIO14 - Serial clock out (SCLK)
@@ -147,7 +181,7 @@ bool max30102Setup()
   maxSensor.enableDIETEMPRDY();
   return true ;
 }
-bool setupWifi()
+bool ConnectToWifi()
 {
   int count ;
   wifiMulti.addAP(ConfigData.ssid1, ConfigData.password1);   
@@ -407,7 +441,7 @@ void PostDetails()
   char jsonString[250];
 
   doc["Speed"]         = round(gSpeed);
-  doc["Cadence"]       = gRPM;
+  doc["Cadence"]       = round(gRPM);
   doc["Distance"]      = round(gDistanceKM);
   doc["TotalDistance"] = round(gTotalDistance);
   doc["Pulse"]         = round(gPulseRate);
@@ -539,6 +573,16 @@ void ReadConfigValuesFromSPIFFS()
 
   ConfigData.wheelCirumference = (3.14 * wheelDiameter)/100 ;// in meters
   strcpy(ConfigData.wifiDeviceName,devicename);
+
+//TODO Items for config file 
+  strcpy(ConfigData.mqttServer, "purvariviera.i2otlabs.com");
+                                
+  ConfigData.mqttPort = 1883 ;
+  
+  strcpy(ConfigData.userName,"girish_kumar"); // TODO Read from JSON file
+  sprintf(ConfigData.dataRequestTopic,"MASTER\/WORKOUTDATA\/%s",ConfigData.userName);
+  strcpy(ConfigData.mqttUser,"dataone");
+  strcpy(ConfigData.mqttPassword,"onedata");
 
 }
 void DisplayConfigValues()
@@ -674,7 +718,8 @@ void DisplayValues( void * pvParameters )
                        deviceTime,gRPM,gSpeed,gDistanceKM,
                        gPower,gRoomTemp,gRoomHumidity,
                        gPulseRate,gBodyTempInCelius);
-                       
+       WritePersistantDataToSPIFFS();                
+       PublishDataSet() ; // Send data to IoT Platform 
        recordFile.close();
     }    
     delay(3000);
@@ -687,12 +732,25 @@ void MeasureHeartRate( void * pvParameters )
   long irValue ;
   float SumForSD ;
   float avg ;
+  if (max30102Setup() == false)
+  {
+    DEBUG_PRINTF("MAX 30102 Set up failed \n");
+    while(1) 
+    { 
+      vTaskDelay(10000)  ;
+    }
+  }
+  else
+  {
+         DEBUG_PRINTF("MAX 30102 Set up success \n");
+  }
   while(1)
   {
      irValue = maxSensor.getIR();
+     //DEBUG_PRINTF("%d \n", irValue);
      gBodyTempInCelius = maxSensor.readTemperature();
-    if (checkForBeat(irValue) == true)
-    {
+     if (checkForBeat(irValue) == true)
+     {
         digitalWrite(ONBOARD_LED,HIGH);
         //We sensed a beat!
         long delta = millis() - lastBeat;
@@ -708,13 +766,13 @@ void MeasureHeartRate( void * pvParameters )
                beatAvg += rates[x];
           beatAvg /= RATE_SIZE;
       
-       }
-    }
+        }
+     }
 
 //  Serial.print("IR=");
 //  Serial.print(irValue);
 //  Serial.print(", BPM=");
-//  Serial.print(beatsPerMinute);
+//  Serial.println(beatsPerMinute);
 //  Serial.print(", Avg BPM=");
       if (prevBeatAvg != beatAvg)
       {
@@ -745,19 +803,19 @@ void MeasureHeartRate( void * pvParameters )
            SumForSD = sqrt(SumForSD) ;
            if (SumForSD < SD_LIMIT)
            {
-             Serial.printf("Avg = %f, SD = %f\n",avg, SumForSD);
+             DEBUG_PRINTF("Avg = %f, SD = %f\n",avg, SumForSD);
              gPulseRate = avg ;
              for(i=0;i<SAMPLE_SIZE;i++)
              {
-                Serial.printf("%d, ", listOfTenSamples[i]);
+                DEBUG_PRINTF("%d, ", listOfTenSamples[i]);
                 listOfTenSamples[i] = 0 ;
              }
-             Serial.printf("\n");
+             DEBUG_PRINTF("\n");
            }
        }
        prevBeatAvg = beatAvg;
      }
-      vTaskDelay(10); 
+      vTaskDelay(1); 
       digitalWrite(ONBOARD_LED,LOW);
       if (irValue < 50000)
       {
@@ -765,10 +823,12 @@ void MeasureHeartRate( void * pvParameters )
         Since Finger is removed all the values so far
         Collected has to ignored 
         */
-       for (idx = 0 ; idx < 10; idx++)
-           listOfTenSamples[idx] = 0;
-       idx = 0;    
-       beatAvg = -1;
+        digitalWrite(ONBOARD_LED,HIGH);
+
+        for (idx = 0 ; idx < 10; idx++)
+            listOfTenSamples[idx] = 0;
+        idx = 0;    
+        beatAvg = -1;
       }
   }
 }
@@ -828,8 +888,8 @@ void ComputeValues( void * pvParameters )
   {
      timeClient.update(); // Keep the device time up to date
      currentTime = millis(); 
-     debugV("cadenceTicks = %u", cadenceTicks);
-     debugV("speedTicks = %u", speedTicks);
+     //debugV("cadenceTicks = %u", cadenceTicks);
+     //debugV("speedTicks = %u", speedTicks);
 
      diff = currentTime -gLastRPMComputedTime ;
      if (diff > 60000)
@@ -840,7 +900,7 @@ void ComputeValues( void * pvParameters )
        gRPM =  cadenceTicks * timeSlots ;
 #endif
        gRPM = cadenceTicks ; // True RPM, we will wait for one minute to get this
-       debugV("FOR COMPUTE cadenceTicks = %u", cadenceTicks);
+       //debugV("FOR COMPUTE cadenceTicks = %u", cadenceTicks);
        cadenceTicks = 0 ;
        gLastRPMComputedTime = currentTime ;
      }
@@ -967,8 +1027,225 @@ void CreateNewRecordFile()
   recordFile.close();
 
   DEBUG_PRINTF("File name = %s \n", recordFileName);
+}
+void MQTTMessageCallBack(char* topic, byte* payload, unsigned int len)
+{
+  /* Implement the logic */
+   char          payloadCharArray[250];
+   JsonObject    rootOfJson ;
+   byte         *ptr ;
   
+  DeserializationError error ; 
+  const size_t capacity = JSON_OBJECT_SIZE(10) + JSON_OBJECT_SIZE(20) + 610;
+  DynamicJsonDocument doc(capacity);
+  
+  int i ;
+  DEBUG_PRINTF("Message arrived [");
+  DEBUG_PRINTF("]\n");
+  DEBUG_PRINTF("Length of payload = %d \n", len);
+  DEBUG_PRINTF("topic = %s ", topic);
+  if (strcmp(topic, ConfigData.dataRequestTopic) == 0)
+  {
+    DEBUG_PRINTF("About to call PublishDataSet \n");
+    PublishDataSet();
+    return;
+  }
+}
+bool verifyMqtt() 
+{
+  bool success = false;
+  //DEBUG_PRINTF("Verifying TLS connection to \n");
+  //DEBUG_PRINTF("%s\n",ConfigData.mqttServer);
+  success = WifiClientForMQTT.connect(ConfigData.mqttServer, ConfigData.mqttPort);
+  if (success) 
+  {
+    DEBUG_PRINTF("MQTT Connection Verified: Success.\n");
+  }
+  else 
+  {
+    DEBUG_PRINTF("MQTT Connection NOT VERIFIED, Reason: Connection failed!\n");
+  }
+  return (success);
+}
 
+void ConfigureMQTTSecureClient()
+{
+  
+  MQTTPubSubClient.setServer(ConfigData.mqttServer, ConfigData.mqttPort);
+  MQTTPubSubClient.setCallback(MQTTMessageCallBack);
+  //verifyMqtt();
+}
+
+bool CheckForFailureReason(int code)
+{
+ // First check whether WiFi is connected or not.
+  if (WiFi.isConnected() == false)
+  {
+    // This is where the problem is, was so fix the issue
+    if (ConnectToWifi() == true)
+    { 
+      return true ;
+    } 
+    else
+    {
+      return false ;
+    }
+  }
+  else 
+  {
+    // Wifi is not the problem, it may be 
+    // 1. MQTT Broker is down
+    // 2. Certificate expired
+    // TODO: Check for certicate expiry and renewal
+  } 
+  return false ;  
+}
+
+bool ReconnectToMQTTBroker() 
+{
+   /* 
+    * Loop until we're reconnected 
+    */
+  int failureCount = 0;
+  int failureCode = 0 ;
+  //DEBUG_PRINTF("ReconnectToMQTTBroker\n");
+  MQTTPubSubClient.setServer(ConfigData.mqttServer, ConfigData.mqttPort);
+  MQTTPubSubClient.setCallback(MQTTMessageCallBack);
+      
+  while (!MQTTPubSubClient.connected()) 
+  {
+    DEBUG_PRINTF("Attempting MQTT broker connection...\n");
+    if (MQTTPubSubClient.connect(ConfigData.userName,
+                                       ConfigData.mqttUser,
+                                       ConfigData.mqttPassword)) 
+    {
+      DEBUG_PRINTF("Connection to MQTT Broker: Failure code = %d\n ",MQTTPubSubClient.state());
+      /* Once connected, resubscribe */
+      MQTTPubSubClient.subscribe("MASTER/PING");
+      MQTTPubSubClient.subscribe(ConfigData.dataRequestTopic);
+      //DEBUG_PRINTF("|%s| message Subscribed\n",ConfigData.dataRequestTopic);
+      MQTTPubSubClient.publish("DEVICE/PING", "hello"); 
+
+      return true ;
+    } 
+    else 
+    {
+      failureCode = MQTTPubSubClient.state();
+      DEBUG_PRINTF("Connection to MQTT Broker:  Failed, connection state =  %d",failureCode);
+      DEBUG_PRINTF(". Trying again in 5 seconds...\n");
+      /* Wait 10 seconds between retries */
+      delay(1000*10);
+      failureCount++ ;
+      if (failureCount > MAX_LIMIT_OF_CONNETION_FAILURE)
+      {
+         if (CheckForFailureReason(failureCode) == false)
+         {
+          return false ;
+         }
+         else
+         {
+            //No need to return true here.
+            // In the next iteration  of the loop  it will 
+            // return in case connection is sucessfull
+         }
+      }
+    }
+  }
+  //DEBUG_PRINTF("Connection to MQTT BROKER: Success,already\n");
+}
+
+/* MQTT Publisher 
+{
+  "measurement": "WorkOut", 
+    "fields": { 
+                "SPEED": 64.30,
+    "RPM": 100.0,
+    "PULSE": 100.1,
+    "DISTANCE": 100.1,
+    "POWER": 999.1,
+    "BODY_TEMP": 99.1,
+    "ROOM_TEMP": 99.1,
+    "ROOM_HUMIDITY": 99.99,
+    "SITEID" : "workout"
+  },
+  "tags": {
+    "USERNAME": "00001",
+    "event": "periodic"
+  }
+}
+ */
+void PublishDataSet()
+{
+  char json[JSON_STRING_LENGTH];
+  int  len ;
+  int currentTime ;
+ 
+  const size_t capacity = JSON_OBJECT_SIZE(2) + JSON_OBJECT_SIZE(3) + JSON_OBJECT_SIZE(9) + 160;
+  DynamicJsonDocument doc(capacity);
+  doc["measurement"] = "WorkOut";
+  currentTime = millis();
+  if (((currentTime - gMqttLastPublishedTime)/1000) < 3)
+      return ; // We are not sending data in less that three seconds
+      
+  DEBUG_PRINTF("Data for json: %0.1f,%0.1f,%0.1f,%d,%0.1f,%0.1f,%d,%0.f\n",
+                       gRPM,gSpeed,gDistanceKM,
+                       gPower,gRoomTemp,gRoomHumidity,
+                       gPulseRate,gBodyTempInCelius);
+                       
+  JsonObject fields = doc.createNestedObject("fields");
+  
+  if (gSpeed > 0.0)
+  {
+      gSpeed = gSpeed + 0.01;
+      fields["SPEED"]            = gSpeed ;
+  }
+  else 
+      fields["SPEED"]            = 0.001 ;
+      
+  if (gRPM > 0.0)    
+  {
+     gRPM = gRPM + 0.01 ;
+     fields["RPM"]              = gRPM ;
+  }
+  else
+     fields["RPM"]           = 0.001 ;
+        
+  if (gDistanceKM > 0.0)
+      fields["DISTANCE"]        = gDistanceKM ;
+  else 
+      fields["DISTANCE"]        = 0.001 ;
+      
+  if (gBodyTempInCelius > 0.0)
+      fields["BODY_TEMP"]        = gBodyTempInCelius ;
+  else
+      fields["BODY_TEMP"]        = 0.001 ;
+      
+  if (gRoomTemp > 0.0)
+      fields["ROOM_TEMP"]        = gRoomTemp ;
+  else 
+      fields["ROOM_TEMP"]        = 0.001 ;
+      
+  if (gRoomHumidity > 0.0)  
+     fields["ROOM_HUMIDITY"]     = gRoomHumidity ;
+  else
+     fields["ROOM_HUMIDITY"]     = 0.001 ;
+
+  fields["POWER"]            = gPower ;
+  fields["PULSE"]            = gPulseRate ;
+
+  JsonObject tags  = doc.createNestedObject("tags");
+  tags["USERNAME"] = ConfigData.userName;
+  tags["event"]    = "periodic";
+  tags["SITEID"]   = "WorkOut";
+  len = serializeJson(doc, json);   
+  DEBUG_PRINTF("DEVICE/WORKOUTDATA payload = %s ,%d \n", json, len) ;
+  MQTTPubSubClient.publish("DEVICE/WORKOUTDATA", json); 
+  gMqttLastPublishedTime = millis();
+}
+
+void WritePersistantDataToSPIFFS()
+{
+  
 }
 void setup() 
 {
@@ -1000,7 +1277,7 @@ void setup()
 
   DisplayConfigValues();
   DEBUG_PRINTF("Configuratio file reading : Success \n");
-  if (setupWifi() == false)
+  if (ConnectToWifi() == false)
   {
       DEBUG_PRINTF("WifiSetup: failed \n");
       ConfigureAsAccessPoint(); 
@@ -1027,6 +1304,10 @@ void setup()
   ftpSrv.begin(FTP_USER_NAME,FTP_PASSWORD);
   DEBUG_PRINTF("WeSuccessb Server configuration: Success \n");
   delay(2000);
+ 
+  ConfigureMQTTSecureClient();
+  //DEBUG_PRINTF("Going call ReconnectToMQTTBroker \n");
+  ReconnectToMQTTBroker();
   //display.clearDisplay();
   xTaskCreatePinnedToCore(
                     ComputeValues,   /* Task function. */
@@ -1051,14 +1332,22 @@ void setup()
                     "Task3",     /* name of task. */
                     10000,       /* Stack size of task */
                     NULL,        /* parameter of the task */
-                    1,           /* priority of the task */
+                    3,           /* priority of the task */
                     &MeasureTempHumidityTask,      /* Task handle to keep track of created task */
-                    CORE_ZERO);          /* pin task to core 0 */      
-
-
+                    CORE_ONE);          /* pin task to core 0 */      
+#if 0
   if (max30102Setup() == true)
   {
-      xTaskCreatePinnedToCore(
+    DEBUG_PRINTF("Max302012 Ready\n");
+  }
+  else
+  {
+    DEBUG_PRINTF("MAX 300102 not found \n");    
+  }
+#endif
+
+
+xTaskCreatePinnedToCore(
                       MeasureHeartRate,   /* Task function. */
                      "Task4",     /* name of task. */
                      10000,       /* Stack size of task */
@@ -1066,29 +1355,24 @@ void setup()
                      1,           /* priority of the task */
                      &MeasureHeartRateTask,      /* Task handle to keep track of created task */
                      CORE_ZERO);          /* pin task to core 0 */      
-  }
-  else
-  {
-    DEBUG_PRINTF("MAX 300102 not found \n");
-  }
-
 }
 
 void loop() 
 {
   webServer.handleClient();
-  
+  //ReconnectToMQTTBroker();
+  MQTTPubSubClient.loop();
   ftpSrv.handleFTP();   
   
   if (prevCadenceTicks != cadenceTicks )
   {
-    DEBUG_PRINTF("prev-%d current-%d s-%d\n",prevCadenceTicks, cadenceTicks,speedTicks);
+    //DEBUG_PRINTF("prev-%d current-%d s-%d\n",prevCadenceTicks, cadenceTicks,speedTicks);
     prevCadenceTicks = cadenceTicks ;
   }
   
   Debug.handle();
   yield();
-  
+ 
 
   // put your main code here, to run repeatedly:
 
