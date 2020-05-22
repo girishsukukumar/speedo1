@@ -575,7 +575,7 @@ void ReadConfigValuesFromSPIFFS()
   strcpy(ConfigData.wifiDeviceName,devicename);
 
 //TODO Items for config file 
-  strcpy(ConfigData.mqttServer, "purvariviera.i2otlabs.com");
+  strcpy(ConfigData.mqttServer, "platform.i2otlabs.com");
                                 
   ConfigData.mqttPort = 1883 ;
   
@@ -1211,26 +1211,38 @@ void PublishDataSet()
      fields["RPM"]           = 0.001 ;
         
   if (gDistanceKM > 0.0)
-      fields["DISTANCE"]        = gDistanceKM ;
+  {
+      gDistanceKM = gDistanceKM + 0.001 ;
+      fields["DIST"]        = gDistanceKM ;
+  }
   else 
-      fields["DISTANCE"]        = 0.001 ;
+      fields["DIST"]        = 0.001 ;
       
   if (gBodyTempInCelius > 0.0)
-      fields["BODY_TEMP"]        = gBodyTempInCelius ;
+  {
+      gBodyTempInCelius = gBodyTempInCelius + 0.01 ;
+      fields["BTEMP"]        = gBodyTempInCelius ;
+  }
   else
-      fields["BODY_TEMP"]        = 0.001 ;
+      fields["BTEMP"]        = 0.001 ;
       
   if (gRoomTemp > 0.0)
-      fields["ROOM_TEMP"]        = gRoomTemp ;
+  {
+      gRoomTemp = gRoomTemp + 0.01 ;
+      fields["RTEMP"]        = gRoomTemp ;
+  }
   else 
-      fields["ROOM_TEMP"]        = 0.001 ;
+      fields["RTEMP"]        = 0.001 ;
       
-  if (gRoomHumidity > 0.0)  
-     fields["ROOM_HUMIDITY"]     = gRoomHumidity ;
+  if (gRoomHumidity > 0.0)
+  {
+     gRoomHumidity = gRoomHumidity + 0.001 ;
+     fields["RHUM"]     = gRoomHumidity ;
+  }
   else
-     fields["ROOM_HUMIDITY"]     = 0.001 ;
+     fields["RHUM"]     = 0.001 ;
 
-  fields["POWER"]            = gPower ;
+  fields["PWR"]            = gPower ;
   fields["PULSE"]            = gPulseRate ;
 
   JsonObject tags  = doc.createNestedObject("tags");
@@ -1239,7 +1251,9 @@ void PublishDataSet()
   tags["SITEID"]   = "WorkOut";
   len = serializeJson(doc, json);   
   DEBUG_PRINTF("DEVICE/WORKOUTDATA payload = %s ,%d \n", json, len) ;
-  MQTTPubSubClient.publish("DEVICE/WORKOUTDATA", json); 
+  bool result;
+  result = MQTTPubSubClient.publish("DEVICE/WORKOUTDATA", json); 
+  DEBUG_PRINTF("REsults of MQTT Publish %d", result);
   gMqttLastPublishedTime = millis();
 }
 
